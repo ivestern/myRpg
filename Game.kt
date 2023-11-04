@@ -29,11 +29,10 @@ fun Session.move(chel: Player, direction: Key? = null): Pair<String, String> {
     }.runUntilKeyPressed(Keys.ESC) {
         onKeyPressed {
             if (direction == null) output = chel.keyboardHandler(key)
-            result = output.first
             if (output.second in actionsList) {
                 var cursorIndex by liveVarOf(0)
                 chel.posBlocked = true
-                val action = when (output.second) {
+                actions = when (output.second) {
                     //"merchant" -> choose(Merchant)
                     "monster" -> {
                         chooseHandler(key, cursorIndex)
@@ -42,43 +41,44 @@ fun Session.move(chel: Player, direction: Key? = null): Pair<String, String> {
                     else -> ""
                 }
             }
+            result = output.first
         }
     }
     return output
 }
 
-fun chooseGen(actions: List<String>): String {
+fun chooseGen(actions: List<String>,cursorIndex: Int): String {
     var finalString = ""
     actions.forEachIndexed { index, item ->
         run {
             val chooser = (if (index == cursorIndex) '>' else ' ')
-            finalString += "$item+$chooser\n"
+            finalString += "$chooser$item\n"
         }
     }
     return finalString
 
 }
 
-fun chooseHandler(key: Key, cursorIndex: Int) {
+fun chooseHandler(key: Key, cursorIndex: Int): String {
     var cursorIndex = cursorIndex
     var actions = chooseGen(Battle, cursorIndex)
     var test = ""
     when (key) {
         Keys.UP -> {
             cursorIndex -= 1
-            actions = chooseGen(Battle, cursorIndex)
         }
 
         Keys.DOWN -> {
             cursorIndex += 1
-            actions = chooseGen(Battle, cursorIndex)
         }
 
         Keys.SPACE -> test = Battle[cursorIndex]
         else -> {}
     }
     if (cursorIndex < 0) cursorIndex = Battle.lastIndex
-    else if (cursorIndex > Battle.lastIndex) cursorIndex = 0 else TODO()
+    else if (cursorIndex > Battle.lastIndex) cursorIndex = 0
+    actions = chooseGen(Battle, cursorIndex)
+    return actions
 }
 
 /*fun Session.actionHandler(output: Pair<String,String>,chel: Player) {
@@ -343,15 +343,17 @@ class Player(val name: String) {
                 } else return Pair("Вы не можете сделать это", lastEvent!!.type)
             }
 
-            else -> return Pair("Вы не можете уйти из боя просто так", lastEvent!!.type)
+            else -> if (key ==Keys.W || key ==Keys.A || key ==Keys.S|| key ==Keys.D) return Pair("Вы не можете уйти из боя просто так", lastEvent!!.type)
+            else {}
         }
+        return Pair("1","2")
     }
 
     fun keyboardHandler(key: Key): Pair<String, String> {
         val lastEvent = map[pos]
         if (posBlocked == false) {
             if (move(key) == false) return interact(key, lastEvent)
-        } else return interact(key, lastEvent)
+        }
         pos = Pair(this.x, this.y)
         if (pos in map) {
             output = Pair("Position: ${pos.second}, ${pos.first} \n ${map[pos]?.viewEvent()}\n", map[pos]!!.type)
