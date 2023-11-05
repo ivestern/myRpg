@@ -15,33 +15,46 @@ import kotlin.random.Random
 val actionsList = listOf("merchant", "monster", "itemPicked")
 val Battle = listOf("Атаковать", "Открыть инвентарь", "Сбежать")
 val Merchant = listOf("Купить", "Продать")
-fun Session.move(chel: Player, direction: Key? = null): Pair<String, String> {
+var cursorIndex = 0
+fun Session.move(chel: Player): Pair<String, String> {
     var actions by liveVarOf("")
     var result by liveVarOf("Управляйте персонажем с помощью W A S D")
-    if (direction != null) output = chel.keyboardHandler(direction)
+    var notice by liveVarOf("")
     section {
+        if (notice!="")bordered(
+            BorderCharacters.ASCII,
+            paddingLeftRight = 1,
+            paddingTopBottom = 1
+        )  { textLine(notice) }
         bordered(
             BorderCharacters.ASCII,
             paddingLeftRight = 1,
             paddingTopBottom = 1
         ) { textLine(result) }
-        bold { textLine(actions) }
+        if (actions!="") bordered(
+            BorderCharacters.ASCII,
+            paddingLeftRight = 1,
+            paddingTopBottom = 1
+        )  { textLine(actions) }
     }.runUntilKeyPressed(Keys.ESC) {
         onKeyPressed {
-            if (direction == null) output = chel.keyboardHandler(key)
-            if (output.second in actionsList) {
-                var cursorIndex by liveVarOf(0)
-                chel.posBlocked = true
-                actions = when (output.second) {
-                    //"merchant" -> choose(Merchant)
-                    "monster" -> {
-                        chooseHandler(key, cursorIndex)
-                    }
-
-                    else -> ""
+            actions=""
+            notice=""
+            output = chel.keyboardHandler(key)
+            actions= actionsChooser(output.second,key,chel)
+            if (actions in Battle|| actions in Merchant) when(actions) {
+                "Сбежать" -> {
+                    chel.posBlocked = false
+                    val preResult=chel.keyboardHandler(Keys.W)
+                    println(preResult)
+                    actions= actionsChooser(preResult.second,Keys.S,chel)
+                    val lostMoney = 10*chel.hardLevel
+                    chel.money -=lostMoney
+                    notice="Вы сбегаете потеряв $lostMoney монет"
+                    result = preResult.first
                 }
             }
-            result = output.first
+            else result = output.first
         }
     }
     return output
@@ -58,11 +71,23 @@ fun chooseGen(actions: List<String>,cursorIndex: Int): String {
     return finalString
 
 }
+fun actionsChooser(outputSecond:String,key: Key,chel: Player): String {
+    val actions:String
+    if (outputSecond in actionsList) {
+        chel.posBlocked = true
+         actions= when (outputSecond) {
+            //"merchant" -> choose(Merchant)
+            "monster" -> chooseHandler(key)
 
-fun chooseHandler(key: Key, cursorIndex: Int): String {
-    var cursorIndex = cursorIndex
-    var actions = chooseGen(Battle, cursorIndex)
-    var test = ""
+            else -> ""
+        }
+    }
+    else actions=""
+    print(actions)
+    return actions
+}
+fun chooseHandler(key: Key): String {
+    var actions: String
     when (key) {
         Keys.UP -> {
             cursorIndex -= 1
@@ -72,7 +97,7 @@ fun chooseHandler(key: Key, cursorIndex: Int): String {
             cursorIndex += 1
         }
 
-        Keys.SPACE -> test = Battle[cursorIndex]
+        Keys.SPACE -> return Battle[cursorIndex]
         else -> {}
     }
     if (cursorIndex < 0) cursorIndex = Battle.lastIndex
@@ -343,7 +368,7 @@ class Player(val name: String) {
                 } else return Pair("Вы не можете сделать это", lastEvent!!.type)
             }
 
-            else -> if (key ==Keys.W || key ==Keys.A || key ==Keys.S|| key ==Keys.D) return Pair("Вы не можете уйти из боя просто так", lastEvent!!.type)
+            else -> if ((key ==Keys.W || key ==Keys.A || key ==Keys.S|| key ==Keys.D)&&posBlocked==true) return Pair("Вы не можете уйти из боя просто так", lastEvent!!.type)
             else {}
         }
         return Pair("1","2")
