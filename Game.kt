@@ -1,9 +1,7 @@
 package Game
 
-import com.varabyte.kotter.foundation.input.Key
-import com.varabyte.kotter.foundation.input.Keys
-import com.varabyte.kotter.foundation.input.onKeyPressed
-import com.varabyte.kotter.foundation.input.runUntilKeyPressed
+import com.sun.org.apache.xpath.internal.compiler.Keywords
+import com.varabyte.kotter.foundation.input.*
 import com.varabyte.kotter.foundation.liveVarOf
 import com.varabyte.kotter.foundation.text.bold
 import com.varabyte.kotter.foundation.text.p
@@ -17,26 +15,52 @@ val actionsList = listOf("merchant", "monster", "itemPicked")
 val Battle = listOf("Атаковать", "Открыть инвентарь", "Сбежать")
 val Merchant = listOf("Купить", "Продать")
 var cursorIndex = 0
+fun convertToEnglish(key: Key): Key {
+    val russianToEnglishMap = mapOf(
+        CharKey('й') to CharKey('q'), CharKey('ц') to CharKey('w'),
+        CharKey('у') to CharKey('e'), CharKey('к') to CharKey('r'),
+        CharKey('е') to CharKey('t'), CharKey('н') to CharKey('y'),
+        CharKey('г') to CharKey('u'), CharKey('ш') to CharKey('i'),
+        CharKey('щ') to CharKey('o'), CharKey('з') to CharKey('p'),
+        CharKey('х') to CharKey('['), CharKey('ъ') to CharKey(']'),
+        CharKey('ф') to CharKey('a'), CharKey('ы') to CharKey('s'),
+        CharKey('в') to CharKey('d'), CharKey('а') to CharKey('f'),
+        CharKey('п') to CharKey('g'), CharKey('р') to CharKey('h'),
+        CharKey('о') to CharKey('j'), CharKey('л') to CharKey('k'),
+        CharKey('д') to CharKey('l'), CharKey('ж') to CharKey(';'),
+        CharKey('э') to CharKey('\''), CharKey('я') to CharKey('z'),
+        CharKey('ч') to CharKey('x'), CharKey('с') to CharKey('c'),
+        CharKey('м') to CharKey('v'), CharKey('и') to CharKey('b'),
+        CharKey('т') to CharKey('n'), CharKey('ь') to CharKey('m'),
+        CharKey('б') to CharKey(','), CharKey('ю') to CharKey('.')
+    )
+
+    return russianToEnglishMap[key] ?: key
+}
+
 fun Session.move(chel: Player): Pair<String, String> {
     var actions by liveVarOf("")
     var result by liveVarOf("Управляйте персонажем с помощью W A S D")
     var notice by liveVarOf("")
     section {
-        if (notice!=""){textLine(mergeStrings(createFramedText(result,50,10),createFramedText(notice,35,5),3))
-            println(mergeStrings(createFramedText(result,50,10),createFramedText(notice,35,5),3)) }
+        if (notice!="" && output.second == "notice"){textLine(mergeStrings(createFramedText(result,50,10),createFramedText(notice,40,10),30)) }
+        else if(notice!="") {textLine(mergeStrings(createFramedText(result,50,10),createFramedText(notice,35,5),30)) }
         else textLine(createFramedText(result,50,10))
         if (actions!="") { textLine(createFramedText(actions,30,5)) }
     }.runUntilKeyPressed(Keys.ESC) {
         onKeyPressed {
             actions=""
             notice=""
-            output = chel.keyboardHandler(key)
-            actions= actionsChooser(output.second,key,chel)
+            val keyEngl=convertToEnglish(key)
+            output = chel.keyboardHandler(keyEngl)
+            if (output.second=="notice") notice= output.first
+            actions= actionsChooser(output.second,keyEngl,chel)
             if (actions in Battle|| actions in Merchant) when(actions) {
                 "Сбежать" -> {
                     chel.posBlocked = false
                     val preResult=chel.keyboardHandler(Keys.W)
                     println(preResult)
+
                     actions= actionsChooser(preResult.second,Keys.S,chel)
                     val lostMoney = 10*chel.hardLevel
                     if (chel.money>=lostMoney) {chel.money -=lostMoney
@@ -66,7 +90,7 @@ fun actionsChooser(outputSecond:String,key: Key,chel: Player): String {
     val actions:String
     if (outputSecond in actionsList) {
         chel.posBlocked = true
-         actions= when (outputSecond) {
+        actions= when (outputSecond) {
             //"merchant" -> choose(Merchant)
             "monster" -> chooseHandler(key)
 
@@ -142,7 +166,7 @@ fun mergeStrings(str1: String, str2: String, spacesBetween: Int): String {
 
     val mergedLines = mutableListOf<String>()
 
-    for (i in 0 until maxOf(lines1.size, lines2.size)) {
+    for (i in 0..<maxOf(lines1.size, lines2.size)) {
         val line1 = if (i < lines1.size) lines1[i] else ""
         val line2 = if (i < lines2.size) lines2[i] else ""
         val mergedLine = line1.padEnd(maxLength) + " ".repeat(spacesBetween) + line2
@@ -400,11 +424,11 @@ class Player(val name: String) {
             Keys.Q -> {
                 if (lastEvent is Chest) {
                     lastEvent.state = 1
-                    return Pair(lastEvent.viewEvent(), lastEvent.type)
-                } else return Pair("Вы не можете сделать это", lastEvent!!.type)
+                    return Pair(lastEvent.viewEvent(), "notice")
+                } else return Pair("Вы не можете сделать это", "notice")
             }
 
-            else -> if ((key ==Keys.W || key ==Keys.A || key ==Keys.S|| key ==Keys.D)&&posBlocked==true) return Pair("Вы не можете уйти из боя просто так", lastEvent!!.type)
+            else -> if ((key ==Keys.W || key ==Keys.A || key ==Keys.S|| key ==Keys.D)&&posBlocked==true) return Pair("Вы не можете уйти из боя просто так", "notice")
             else {}
         }
         return Pair("1","2")
@@ -431,7 +455,7 @@ class Player(val name: String) {
                 map = mutableMapOf(Pair(0, 0) to Empty())
                 this.x = 0
                 this.y = 0
-                return Pair("Вы прошли через портал, что то изменилось", lastEvent.type)
+                return Pair("Вы прошли через портал\nЧто то изменилось", "notice")
             }
 
             is Chest -> {
@@ -458,7 +482,7 @@ class Player(val name: String) {
                 }
                 if (lastEvent.state == 1) lastEvent.loot = Nothing()
                 if (lastEvent.state < 2) lastEvent.state += 1
-                return Pair(actionResult, lastEvent.type)
+                return Pair(actionResult, "notice")
 
             }
 
@@ -467,7 +491,7 @@ class Player(val name: String) {
             }
 
             is Empty -> {
-                return Pair("Взаимодействовать не с чем", lastEvent.type)
+                return Pair("Взаимодействовать не с чем", "notice")
             }
 
             else -> return Pair("", "")
