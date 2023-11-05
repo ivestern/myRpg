@@ -6,6 +6,7 @@ import com.varabyte.kotter.foundation.input.onKeyPressed
 import com.varabyte.kotter.foundation.input.runUntilKeyPressed
 import com.varabyte.kotter.foundation.liveVarOf
 import com.varabyte.kotter.foundation.text.bold
+import com.varabyte.kotter.foundation.text.p
 import com.varabyte.kotter.foundation.text.textLine
 import com.varabyte.kotter.runtime.Session
 import com.varabyte.kotterx.decorations.BorderCharacters
@@ -21,21 +22,10 @@ fun Session.move(chel: Player): Pair<String, String> {
     var result by liveVarOf("Управляйте персонажем с помощью W A S D")
     var notice by liveVarOf("")
     section {
-        if (notice!="")bordered(
-            BorderCharacters.ASCII,
-            paddingLeftRight = 1,
-            paddingTopBottom = 1
-        )  { textLine(notice) }
-        bordered(
-            BorderCharacters.ASCII,
-            paddingLeftRight = 1,
-            paddingTopBottom = 1
-        ) { textLine(result) }
-        if (actions!="") bordered(
-            BorderCharacters.ASCII,
-            paddingLeftRight = 1,
-            paddingTopBottom = 1
-        )  { textLine(actions) }
+        if (notice!=""){textLine(mergeStrings(createFramedText(result,50,10),createFramedText(notice,35,5),3))
+            println(mergeStrings(createFramedText(result,50,10),createFramedText(notice,35,5),3)) }
+        else textLine(createFramedText(result,50,10))
+        if (actions!="") { textLine(createFramedText(actions,30,5)) }
     }.runUntilKeyPressed(Keys.ESC) {
         onKeyPressed {
             actions=""
@@ -49,8 +39,9 @@ fun Session.move(chel: Player): Pair<String, String> {
                     println(preResult)
                     actions= actionsChooser(preResult.second,Keys.S,chel)
                     val lostMoney = 10*chel.hardLevel
-                    chel.money -=lostMoney
-                    notice="Вы сбегаете потеряв $lostMoney монет"
+                    if (chel.money>=lostMoney) {chel.money -=lostMoney
+                    notice="Вы сбегаете потеряв $lostMoney монет"}
+                    else  notice="Вы сбегаете"
                     result = preResult.first
                 }
             }
@@ -83,21 +74,20 @@ fun actionsChooser(outputSecond:String,key: Key,chel: Player): String {
         }
     }
     else actions=""
-    print(actions)
     return actions
 }
 fun chooseHandler(key: Key): String {
     var actions: String
     when (key) {
-        Keys.UP -> {
+        Keys.W -> {
             cursorIndex -= 1
         }
 
-        Keys.DOWN -> {
+        Keys.S -> {
             cursorIndex += 1
         }
 
-        Keys.SPACE -> return Battle[cursorIndex]
+        Keys.E -> return Battle[cursorIndex]
         else -> {}
     }
     if (cursorIndex < 0) cursorIndex = Battle.lastIndex
@@ -105,18 +95,59 @@ fun chooseHandler(key: Key): String {
     actions = chooseGen(Battle, cursorIndex)
     return actions
 }
+fun createFramedText(text: String, width: Int, height: Int): String {
+    val lines = text.split("\n")
+    val maxWidth = lines.map { it.length }.max() ?: 0
 
-/*fun Session.actionHandler(output: Pair<String,String>,chel: Player) {
-
-
-    val result = when(action){
-        "Сбежать"-> move(chel,Keys.W)
-        else -> {}
+    if (maxWidth > width - 2) {
+        throw IllegalArgumentException("Дохуя хочешь") //Text lines are too long to fit in the specified frame width
     }
-}*/
-interface Actions {
-    val descr: String
+
+    val horizontalBorder = "+${"-".repeat(width - 2)}+"
+    val emptyLine = "|${" ".repeat(width - 2)}|"
+
+    val remainingSpace = height - 2 - lines.size
+    val topPadding = remainingSpace / 2
+    val bottomPadding = remainingSpace - topPadding
+
+    val framedText = mutableListOf<String>()
+
+    framedText.add(horizontalBorder)
+    for (i in 0 until topPadding) {
+        framedText.add(emptyLine)
+    }
+
+    for (line in lines) {
+        val padding = (width - 2 - line.length) / 2
+        val centeredLine = "|${" ".repeat(padding)}$line${" ".repeat(width - 2 - padding - line.length)}|"
+        framedText.add(centeredLine)
+    }
+
+    for (i in 0 until bottomPadding) {
+        framedText.add(emptyLine)
+    }
+    framedText.add(horizontalBorder)
+
+    return framedText.joinToString("\n")
 }
+fun mergeStrings(str1: String, str2: String, spacesBetween: Int): String {
+    val lines1 = str1.split("\n")
+    val lines2 = str2.split("\n")
+    val maxLength = maxOf(lines1.maxBy { it.length }?.length ?: 0, lines2.maxBy { it.length }?.length ?: 0)
+
+    val mergedLines = mutableListOf<String>()
+
+    for (i in 0 until maxOf(lines1.size, lines2.size)) {
+        val line1 = if (i < lines1.size) lines1[i] else ""
+        val line2 = if (i < lines2.size) lines2[i] else ""
+        val mergedLine = line1.padEnd(maxLength) + " ".repeat(spacesBetween) + line2
+        mergedLines.add(mergedLine)
+    }
+
+    return mergedLines.joinToString("\n")
+}
+
+
 
 interface Event {
     val hardLevel: Int
@@ -267,7 +298,7 @@ class Chest(override val hardLevel: Int) : Event {
         when (state) {
             2 -> return "Перед вами пустой сундук"
             1 -> {
-                return "В сундуке лежит ${loot.name}, нажмите E чтобы взять/экипировать"
+                return "В сундуке лежит ${loot.name}\n нажмите E чтобы взять/экипировать"
             }
 
             0 -> {
