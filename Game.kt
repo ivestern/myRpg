@@ -9,6 +9,7 @@ import com.varabyte.kotter.foundation.text.textLine
 import com.varabyte.kotter.runtime.Session
 import com.varabyte.kotterx.decorations.BorderCharacters
 import com.varabyte.kotterx.decorations.bordered
+import java.util.Locale
 import kotlin.random.Random
 
 val actionsList = listOf("merchant", "monster", "itemPicked")
@@ -38,38 +39,44 @@ fun convertToEnglish(key: Key): Key {
     return russianToEnglishMap[key] ?: key
 }
 
-fun Session.move(chel: Player): Pair<String, String> {
+fun Session.move(chel: Player): Triple<String, String, String> {
     var actions by liveVarOf("")
     var result by liveVarOf("Управляйте персонажем с помощью W A S D")
     var notice by liveVarOf("")
+    var itemsList by liveVarOf("")
     section {
-        if (notice!="" && output.second == "notice"){textLine(mergeStrings(createFramedText(result,50,10),createFramedText(notice,40,10),30)) }
+        if (itemsList ==""){
+            textLine("Exit <Esc>")
+        if (notice!="" && output.first == "chest"){textLine(mergeStrings(createFramedText(result,50,10),createFramedText(notice,40,10),30)) }
         else if(notice!="") {textLine(mergeStrings(createFramedText(result,50,10),createFramedText(notice,35,5),30)) }
         else textLine(createFramedText(result,50,10))
-        if (actions!="") { textLine(createFramedText(actions,30,5)) }
+        if (actions!="") { textLine(createFramedText(actions,30,5)) }}
+        else{textLine(itemsList)}
     }.runUntilKeyPressed(Keys.ESC) {
         onKeyPressed {
             actions=""
             notice=""
             val keyEngl=convertToEnglish(key)
             output = chel.keyboardHandler(keyEngl)
-            if (output.second=="notice") notice= output.first
-            actions= actionsChooser(output.second,keyEngl,chel)
+            notice= output.third
+            actions= actionsChooser(output.first,keyEngl,chel)
             if (actions in Battle|| actions in Merchant) when(actions) {
                 "Сбежать" -> {
                     chel.posBlocked = false
-                    val preResult=chel.keyboardHandler(Keys.W)
-                    println(preResult)
-
-                    actions= actionsChooser(preResult.second,Keys.S,chel)
+                    val preResult=chel.keyboardHandler(chel.previousDirect)
+                    actions= actionsChooser(preResult.first,Keys.S,chel)
                     val lostMoney = 10*chel.hardLevel
                     if (chel.money>=lostMoney) {chel.money -=lostMoney
                     notice="Вы сбегаете потеряв $lostMoney монет"}
                     else  notice="Вы сбегаете"
-                    result = preResult.first
+                    notice=preResult.third
+                    result = preResult.second
+                }
+                "Открыть инвентарь"->{
+                    chel.itemsView()
                 }
             }
-            else result = output.first
+            else result = output.second
         }
     }
     return output
@@ -79,8 +86,9 @@ fun chooseGen(actions: List<String>,cursorIndex: Int): String {
     var finalString = ""
     actions.forEachIndexed { index, item ->
         run {
-            val chooser = (if (index == cursorIndex) '>' else ' ')
-            finalString += "$chooser$item\n"
+            //val chooser = (if (index == cursorIndex) '>' else ' ')
+            val post = (if (index == cursorIndex) "  <E>" else "")
+            finalString += "$item$post\n"
         }
     }
     return finalString
@@ -101,19 +109,18 @@ fun actionsChooser(outputSecond:String,key: Key,chel: Player): String {
     return actions
 }
 fun chooseHandler(key: Key): String {
-    var actions: String
     when (key) {
         Keys.W -> {
             cursorIndex -= 1
         }
         Keys.D -> {
-            cursorIndex -= 1
-        }
-        Keys.A -> {
             cursorIndex += 1
         }
         Keys.S -> {
             cursorIndex += 1
+        }
+        Keys.A -> {
+            cursorIndex -= 1
         }
 
         Keys.E -> return Battle[cursorIndex]
@@ -121,7 +128,7 @@ fun chooseHandler(key: Key): String {
     }
     if (cursorIndex < 0) cursorIndex = Battle.lastIndex
     else if (cursorIndex > Battle.lastIndex) cursorIndex = 0
-    actions = chooseGen(Battle, cursorIndex)
+    val actions: String = chooseGen(Battle, cursorIndex)
     return actions
 }
 fun createFramedText(text: String, width: Int, height: Int): String {
@@ -142,7 +149,7 @@ fun createFramedText(text: String, width: Int, height: Int): String {
     val framedText = mutableListOf<String>()
 
     framedText.add(horizontalBorder)
-    for (i in 0 until topPadding) {
+    for (i in 0..<topPadding) {
         framedText.add(emptyLine)
     }
 
@@ -152,7 +159,7 @@ fun createFramedText(text: String, width: Int, height: Int): String {
         framedText.add(centeredLine)
     }
 
-    for (i in 0 until bottomPadding) {
+    for (i in 0..<bottomPadding) {
         framedText.add(emptyLine)
     }
     framedText.add(horizontalBorder)
@@ -214,7 +221,6 @@ interface Armor : Loot {
     override val name: String
         get() = "$type броня+${hardLevel}"
 }
-
 class ArmorLeather(override val hardLevel: Int) : Armor {
     override val type = "Кожаная"
     override val dodge = 0.3
@@ -374,7 +380,7 @@ data class Orc(override val hardLevel: Int) : Monster {
     override var stateLive: Boolean = true
 }
 
-var output = Pair("", "empty")
+var output = Triple("empty","","")
 val slimeColors = listOf("Зеленый", "Синий", "Красный", "Желтый")
 var map = mutableMapOf<Pair<Int?, Int?>, Event?>(Pair(0, 0) to Empty())
 
@@ -387,12 +393,19 @@ class Player(val name: String) {
     val dodge = armor.dodge
     var x = 0
     var y = 0
+    lateinit var previousDirect:Key
     var hardLevel = 1
     var keyCount = 0
     var money = 0
     var pos = Pair(this.x, this.y)
     var posBlocked = false
-    fun move(key: Key): Boolean {
+    var items:MutableMap<Int,Loot> = mutableMapOf()
+    fun itemsView(){
+        for (items in items){
+
+        }
+    }
+    private fun move(key: Key): Boolean {
         when (key) {
             Keys.W -> {
                 this.y++
@@ -412,10 +425,11 @@ class Player(val name: String) {
 
             else -> return false
         }
+        previousDirect=key
         return true
     }
 
-    fun interact(key: Key, lastEvent: Event?): Pair<String, String> {
+    private fun interact(key: Key, lastEvent: Event?): Triple<String,String,String> {
         when (key) {
             Keys.E -> {
                 return eventHandler(lastEvent)
@@ -424,38 +438,38 @@ class Player(val name: String) {
             Keys.Q -> {
                 if (lastEvent is Chest) {
                     lastEvent.state = 1
-                    return Pair(lastEvent.viewEvent(), "notice")
-                } else return Pair("Вы не можете сделать это", "notice")
+                    return Triple(lastEvent.type,lastEvent.viewEvent(), "")
+                } else return Triple(lastEvent!!.type,lastEvent.viewEvent(),"Вы не можете сделать это",)
             }
 
-            else -> if ((key ==Keys.W || key ==Keys.A || key ==Keys.S|| key ==Keys.D)&&posBlocked==true) return Pair("Вы не можете уйти из боя просто так", "notice")
+            else -> if ((key ==Keys.W || key ==Keys.A || key ==Keys.S|| key ==Keys.D)&&posBlocked==true) return Triple(lastEvent!!.type,"","Вы не можете уйти из боя просто так" )
             else {}
         }
-        return Pair("1","2")
+        return Triple("1","Adios","")
     }
 
-    fun keyboardHandler(key: Key): Pair<String, String> {
+    fun keyboardHandler(key: Key): Triple<String, String,String> {
         val lastEvent = map[pos]
         if (posBlocked == false) {
             if (move(key) == false) return interact(key, lastEvent)
         }
         pos = Pair(this.x, this.y)
         if (pos in map) {
-            output = Pair("Position: ${pos.second}, ${pos.first} \n ${map[pos]?.viewEvent()}\n", map[pos]!!.type)
+            output = Triple(map[pos]!!.type,"Position: ${pos.second}, ${pos.first} \n ${map[pos]?.viewEvent()}\n","")
         } else {
             output = eventGenerator(hardLevel, pos)
         }
         return output
     }
 
-    private fun eventHandler(lastEvent: Event?): Pair<String, String> {
+    private fun eventHandler(lastEvent: Event?): Triple<String,String, String> {
         when (lastEvent) {
             is Portal -> {
                 hardLevel++
                 map = mutableMapOf(Pair(0, 0) to Empty())
                 this.x = 0
                 this.y = 0
-                return Pair("Вы прошли через портал\nЧто то изменилось", "notice")
+                return Triple(Empty().type,"Position: 0,0\n${Empty().viewEvent()}","Вы прошли через портал\nЧто то изменилось")
             }
 
             is Chest -> {
@@ -482,26 +496,26 @@ class Player(val name: String) {
                 }
                 if (lastEvent.state == 1) lastEvent.loot = Nothing()
                 if (lastEvent.state < 2) lastEvent.state += 1
-                return Pair(actionResult, "notice")
+                return Triple(lastEvent.type,lastEvent.viewEvent(),actionResult)
 
             }
 
             is Monster -> {
-                return Pair(lastEvent.viewEvent(), "monster")
+                return Triple(lastEvent.type,lastEvent.viewEvent(),"")
             }
 
             is Empty -> {
-                return Pair("Взаимодействовать не с чем", "notice")
+                return Triple(lastEvent.type,lastEvent.viewEvent(),"Взаимодействовать не с чем")
             }
 
-            else -> return Pair("", "")
+            else -> return Triple("","", "")
 
         }
     }
 
 }
 
-fun eventGenerator(hardLevel: Int, pos: Pair<Int, Int>): Pair<String, String> {
+fun eventGenerator(hardLevel: Int, pos: Pair<Int, Int>): Triple<String,String, String> {
     val events = listOf("nothing", "monster", "chest", "portal")
     val event: Event? = when (events.random()) {
         "nothing" -> Empty()
@@ -517,5 +531,5 @@ fun eventGenerator(hardLevel: Int, pos: Pair<Int, Int>): Pair<String, String> {
         else -> null
     }
     map.put(pos, event)
-    return Pair("Position: ${pos.second}, ${pos.first} \n ${event?.viewEvent()}\n", event!!.type)
+    return Triple(event!!.type,"Position: ${pos.second}, ${pos.first} \n ${event?.viewEvent()}\n", "")
 }
