@@ -82,7 +82,12 @@ fun chooseHandler(key: Key): String {
         Keys.W -> {
             cursorIndex -= 1
         }
-
+        Keys.D -> {
+            cursorIndex -= 1
+        }
+        Keys.A -> {
+            cursorIndex += 1
+        }
         Keys.S -> {
             cursorIndex += 1
         }
